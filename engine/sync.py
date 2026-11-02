@@ -206,29 +206,72 @@ def add_tree(specs: list[tuple[str, Path]], root: Path, prefix: str) -> None:
         specs.append((f"{prefix}/{rel}", path))
 
 
+def discover_projects() -> list[str]:
+    root = HOME / "Documents" / "我的项目"
+    if not root.is_dir():
+        return []
+    return [
+        path.name for path in sorted(root.iterdir())
+        if path.is_dir() and not path.name.startswith(".")
+    ]
+
+
+def scope_config(cfg: dict) -> dict:
+    raw = cfg.get("scope")
+    if isinstance(raw, dict):
+        return {
+            "settings": bool(raw.get("settings", True)),
+            "plugins": bool(raw.get("plugins", True)),
+            "skills": bool(raw.get("skills", True)),
+            "tools": bool(raw.get("tools", True)),
+            "workspaceMemory": bool(raw.get("workspaceMemory", True)),
+            "projectMemory": bool(raw.get("projectMemory", True)),
+            "kb": bool(raw.get("kb", False)),
+        }
+    return {
+        "settings": True,
+        "plugins": True,
+        "skills": True,
+        "tools": True,
+        "workspaceMemory": True,
+        "projectMemory": bool(cfg.get("include_project_memory", True)),
+        "kb": bool(cfg.get("include_kb", False)),
+    }
+
+
 def collect_specs(cfg: dict) -> list[tuple[str, Path]]:
     specs: list[tuple[str, Path]] = []
-    for name in GLOBAL_FILES:
-        add_file(specs, DSH / name, f"global/{name}")
-    add_file(specs, DSH / "profiles" / "desktop" / "package.json", "profile/desktop/package.json")
-    add_file(specs, DSH / "profiles" / "desktop" / "cordis.patch.yml", "profile/desktop/cordis.patch.yml")
-    for name in STORAGE_FILES:
-        add_file(specs, DSH / "storages" / name, f"storages/{name}")
-    add_tree(specs, DSH / ".agent-presets", "presets")
-    add_tree(specs, HOME / ".agents" / "skills", "skills")
-    add_tree(specs, DSH / "tools", "tools")
-    add_tree(specs, WORKSPACE / "plugins", "plugins")
-    for name in WORKSPACE_FILES:
-        add_file(specs, WORKSPACE / name, f"workspace/{name}")
-    if cfg.get("include_project_memory", True):
+    scope = scope_config(cfg)
+    if scope["settings"]:
+        for name in GLOBAL_FILES:
+            add_file(specs, DSH / name, f"global/{name}")
+        add_file(specs, DSH / "profiles" / "desktop" / "package.json", "profile/desktop/package.json")
+        add_file(specs, DSH / "profiles" / "desktop" / "cordis.patch.yml", "profile/desktop/cordis.patch.yml")
+        for name in STORAGE_FILES:
+            add_file(specs, DSH / "storages" / name, f"storages/{name}")
+        add_tree(specs, DSH / ".agent-presets", "presets")
+    if scope["skills"]:
+        add_tree(specs, HOME / ".agents" / "skills", "skills")
+    if scope["tools"]:
+        add_tree(specs, DSH / "tools", "tools")
+    if scope["plugins"]:
+        add_tree(specs, WORKSPACE / "plugins", "plugins")
+    if scope["workspaceMemory"]:
+        for name in WORKSPACE_FILES:
+            add_file(specs, WORKSPACE / name, f"workspace/{name}")
+    if scope["projectMemory"]:
         projects = HOME / "Documents" / "我的项目"
+        selected = cfg.get("project_names")
+        selected_set = {str(x) for x in selected} if isinstance(selected, list) and selected else None
         if projects.is_dir():
             for project in sorted(projects.iterdir()):
                 if not project.is_dir() or project.name.startswith("."):
                     continue
+                if selected_set is not None and project.name not in selected_set:
+                    continue
                 for name in PROJECT_MEMORY_FILES:
                     add_file(specs, project / name, f"projects/{project.name}/{name}")
-    if cfg.get("include_kb", False):
+    if scope["kb"]:
         add_tree(specs, DSH / "kb", "kb")
     # Deduplicate by id, preserving the first source.
     seen: set[str] = set()
@@ -618,6 +661,22 @@ def cmd_settings(args) -> int:
         cfg["include_project_memory"] = bool(data["includeProjectMemory"])
     if "includeKb" in data:
         cfg["include_kb"] = bool(data["includeKb"])
+    if "scope" in data and isinstance(data["scope"], dict):
+        raw_scope = data["scope"]
+        cfg["scope"] = {
+            "settings": bool(raw_scope.get("settings", True)),
+            "plugins": bool(raw_scope.get("plugins", True)),
+            "skills": bool(raw_scope.get("skills", True)),
+            "tools": bool(raw_scope.get("tools", True)),
+            "workspaceMemory": bool(raw_scope.get("workspaceMemory", True)),
+            "projectMemory": bool(raw_scope.get("projectMemory", True)),
+            "kb": bool(raw_scope.get("kb", False)),
+        }
+    if "projectNames" in data:
+        names = data["projectNames"]
+        if not isinstance(names, list):
+            raise RuntimeError("projectNames must be an array")
+        cfg["project_names"] = [str(x) for x in names if str(x).strip()]
     if "maxFileMb" in data:
         try:
             size = int(data["maxFileMb"])
@@ -664,6 +723,9 @@ def cmd_status(args) -> int:
             "entries": len(entries),
             "includeProjectMemory": bool(cfg.get("include_project_memory", True)),
             "includeKb": bool(cfg.get("include_kb", False)),
+            "scope": scope_config(cfg),
+            "projects": discover_projects(),
+            "projectNames": list(cfg.get("project_names") or []),
             "maxFileMb": int(cfg.get("max_file_mb", 10)),
             "autosyncMinutes": int(cfg.get("autosync_minutes", 10)),
             "autostart": startup.is_file(),

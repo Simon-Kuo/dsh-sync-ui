@@ -56,6 +56,16 @@ window.__ModuleLoader__.load({
       intervalMinutes: '自动同步间隔',
       scopeProjects: '同步项目记忆',
       scopeKb: '同步本地资料库（KB）',
+      content: '同步内容',
+      contentHint: '只同步你勾选的类别；项目记忆可以逐个选择。',
+      scopeSettings: '全局设置与偏好',
+      scopePlugins: '已安装插件',
+      scopeSkills: '技能',
+      scopeTools: '工具',
+      scopeWorkspace: '工作区记忆（AGENTS/MEMORY/HANDOFF）',
+      projectsLabel: '项目记忆',
+      projectsEmpty: '没有发现项目',
+      projectsAll: '全部项目（不选则等于全部）',
       maxFileMb: '单文件上限 (MB)',
       saveSettings: '保存设置',
       disableAuto: '关闭自动同步',
@@ -116,6 +126,16 @@ window.__ModuleLoader__.load({
       intervalMinutes: 'Auto-sync interval',
       scopeProjects: 'Sync project memory',
       scopeKb: 'Sync local knowledge base (KB)',
+      content: 'Sync content',
+      contentHint: 'Only checked categories are synced. Project memory can be selected per project.',
+      scopeSettings: 'Global settings and preferences',
+      scopePlugins: 'Installed plugins',
+      scopeSkills: 'Skills',
+      scopeTools: 'Tools',
+      scopeWorkspace: 'Workspace memory (AGENTS/MEMORY/HANDOFF)',
+      projectsLabel: 'Project memory',
+      projectsEmpty: 'No projects found',
+      projectsAll: 'All projects (empty selection means all)',
       maxFileMb: 'Max file size (MB)',
       saveSettings: 'Save settings',
       disableAuto: 'Disable auto-sync',
@@ -223,6 +243,11 @@ window.__ModuleLoader__.load({
       }
       .dsh-sync-check { display: flex; align-items: center; gap: 8px; color: var(--dsw-alias-label-primary); font-size: 12.5px; }
       .dsh-sync-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--dsw-alias-brand-primary); }
+      .dsh-sync-check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 16px; }
+      .dsh-sync-projects { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+      .dsh-sync-projects-title { margin-bottom: 8px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+      .dsh-sync-project-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 7px 14px; max-height: 180px; overflow: auto; }
+      .dsh-sync-empty { color: var(--dsw-alias-label-secondary); font-size: 12px; }
       .dsh-sync-settings-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
       .dsh-sync-input {
         box-sizing: border-box; flex: 1 1 320px; min-width: 0; height: 32px;
@@ -358,10 +383,19 @@ window.__ModuleLoader__.load({
       const [log, setLog] = React.useState('');
       const [repoInput, setRepoInput] = React.useState('');
       const [branchInput, setBranchInput] = React.useState('main');
-      const [includeProjects, setIncludeProjects] = React.useState(true);
-      const [includeKb, setIncludeKb] = React.useState(false);
       const [maxFileMb, setMaxFileMb] = React.useState(10);
       const [intervalMinutes, setIntervalMinutes] = React.useState(10);
+      const [scope, setScope] = React.useState({
+        settings: true,
+        plugins: true,
+        skills: true,
+        tools: true,
+        workspaceMemory: true,
+        projectMemory: true,
+        kb: false,
+      });
+      const [projects, setProjects] = React.useState([]);
+      const [selectedProjects, setSelectedProjects] = React.useState([]);
 
       const run = async (action, argument = '') => {
         if (!sessionId) {
@@ -405,11 +439,38 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (!status) return;
         setBranchInput(status.branch || 'main');
-        setIncludeProjects(status.includeProjectMemory !== false);
-        setIncludeKb(!!status.includeKb);
         setMaxFileMb(status.maxFileMb || 10);
         setIntervalMinutes(status.autosyncMinutes || 10);
-      }, [status?.branch, status?.includeProjectMemory, status?.includeKb, status?.maxFileMb, status?.autosyncMinutes]);
+        if (status.scope && typeof status.scope === 'object') {
+          setScope({
+            settings: status.scope.settings !== false,
+            plugins: status.scope.plugins !== false,
+            skills: status.scope.skills !== false,
+            tools: status.scope.tools !== false,
+            workspaceMemory: status.scope.workspaceMemory !== false,
+            projectMemory: status.scope.projectMemory !== false,
+            kb: !!status.scope.kb,
+          });
+        }
+        const list = Array.isArray(status.projects) ? status.projects : [];
+        setProjects(list);
+        const saved = Array.isArray(status.projectNames) ? status.projectNames : [];
+        setSelectedProjects(saved.length ? saved.filter((name) => list.includes(name)) : list);
+      }, [
+        status?.branch,
+        status?.includeKb,
+        status?.maxFileMb,
+        status?.autosyncMinutes,
+        status?.scope?.settings,
+        status?.scope?.plugins,
+        status?.scope?.skills,
+        status?.scope?.tools,
+        status?.scope?.workspaceMemory,
+        status?.scope?.projectMemory,
+        status?.scope?.kb,
+        status?.projectNames?.join('|'),
+        status?.projects?.join('|'),
+      ]);
 
       const push = () => run('push');
       const pull = () => run('pull');
@@ -417,11 +478,22 @@ window.__ModuleLoader__.load({
       const disableAuto = () => run('uninstall-autostart');
       const saveSettings = () => run('settings', JSON.stringify({
         branch: branchInput.trim(),
-        includeProjectMemory: includeProjects,
-        includeKb,
+        includeProjectMemory: scope.projectMemory && selectedProjects.length > 0,
+        includeKb: scope.kb,
+        scope: {
+          ...scope,
+          projectMemory: scope.projectMemory && selectedProjects.length > 0,
+        },
+        projectNames: selectedProjects,
         maxFileMb: Number(maxFileMb) || 10,
         autosyncMinutes: Number(intervalMinutes) || 10,
       }));
+      const toggleScope = (key) => setScope((previous) => ({ ...previous, [key]: !previous[key] }));
+      const toggleProject = (name) => setSelectedProjects((previous) => (
+        previous.includes(name)
+          ? previous.filter((item) => item !== name)
+          : [...previous, name]
+      ));
       const back = () => {
         if (ctx.layout && typeof ctx.layout.selectPanel === 'function') {
           ctx.layout.selectPanel('conversation');
@@ -470,6 +542,57 @@ window.__ModuleLoader__.load({
               }, status?.remote ? t('changeButton') : t('connectButton')),
             ]),
           ]),
+          h('div', { className: 'dsh-sync-settings', key: 'content' }, [
+            h('h3', { key: 'title' }, t('content')),
+            h('p', { key: 'hint' }, t('contentHint')),
+            h('div', { className: 'dsh-sync-check-grid', key: 'scope' }, [
+              h('label', { className: 'dsh-sync-check', key: 'settings' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.settings, onChange: () => toggleScope('settings') }),
+                h('span', { key: 'l' }, t('scopeSettings')),
+              ]),
+              h('label', { className: 'dsh-sync-check', key: 'plugins' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.plugins, onChange: () => toggleScope('plugins') }),
+                h('span', { key: 'l' }, t('scopePlugins')),
+              ]),
+              h('label', { className: 'dsh-sync-check', key: 'skills' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.skills, onChange: () => toggleScope('skills') }),
+                h('span', { key: 'l' }, t('scopeSkills')),
+              ]),
+              h('label', { className: 'dsh-sync-check', key: 'tools' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.tools, onChange: () => toggleScope('tools') }),
+                h('span', { key: 'l' }, t('scopeTools')),
+              ]),
+              h('label', { className: 'dsh-sync-check', key: 'workspace' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.workspaceMemory, onChange: () => toggleScope('workspaceMemory') }),
+                h('span', { key: 'l' }, t('scopeWorkspace')),
+              ]),
+              h('label', { className: 'dsh-sync-check', key: 'projects' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.projectMemory, onChange: () => toggleScope('projectMemory') }),
+                h('span', { key: 'l' }, t('scopeProjects')),
+              ]),
+              h('label', { className: 'dsh-sync-check', key: 'kb' }, [
+                h('input', { key: 'i', type: 'checkbox', checked: scope.kb, onChange: () => toggleScope('kb') }),
+                h('span', { key: 'l' }, t('scopeKb')),
+              ]),
+            ]),
+            scope.projectMemory ? h('div', { className: 'dsh-sync-projects', key: 'project-list' }, [
+              h('div', { className: 'dsh-sync-projects-title', key: 'title' }, t('projectsLabel')),
+              projects.length
+                ? h('div', { className: 'dsh-sync-project-list', key: 'list' }, projects.map((name) => h('label', {
+                  key: name,
+                  className: 'dsh-sync-check',
+                }, [
+                  h('input', {
+                    key: 'i',
+                    type: 'checkbox',
+                    checked: selectedProjects.includes(name),
+                    onChange: () => toggleProject(name),
+                  }),
+                  h('span', { key: 'l' }, name),
+                ])))
+                : h('div', { className: 'dsh-sync-empty', key: 'empty' }, t('projectsEmpty')),
+            ]) : null,
+          ]),
           h('div', { className: 'dsh-sync-settings', key: 'settings' }, [
             h('h3', { key: 'title' }, t('settings')),
             h('div', { className: 'dsh-sync-settings-grid', key: 'grid' }, [
@@ -503,24 +626,6 @@ window.__ModuleLoader__.load({
                   value: maxFileMb,
                   onChange: (event) => setMaxFileMb(Number(event.target.value)),
                 }),
-              ]),
-              h('label', { className: 'dsh-sync-check', key: 'projects' }, [
-                h('input', {
-                  key: 'i',
-                  type: 'checkbox',
-                  checked: includeProjects,
-                  onChange: (event) => setIncludeProjects(event.target.checked),
-                }),
-                h('span', { key: 'l' }, t('scopeProjects')),
-              ]),
-              h('label', { className: 'dsh-sync-check', key: 'kb' }, [
-                h('input', {
-                  key: 'i',
-                  type: 'checkbox',
-                  checked: includeKb,
-                  onChange: (event) => setIncludeKb(event.target.checked),
-                }),
-                h('span', { key: 'l' }, t('scopeKb')),
               ]),
             ]),
             h('div', { className: 'dsh-sync-settings-actions', key: 'actions' }, [
