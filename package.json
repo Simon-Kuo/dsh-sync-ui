@@ -1,0 +1,48 @@
+{
+  "name": "dsh-sync-ui",
+  "version": "0.4.0",
+  "type": "module",
+  "description": "Cross-machine sync panel for DSH settings, plugins, skills and memory.",
+  "license": "MIT",
+  "author": "Simon-Kuo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Simon-Kuo/dsh-sync-ui.git"
+  },
+  "homepage": "https://github.com/Simon-Kuo/dsh-sync-ui",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "sync",
+    "backup"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "engine/sync.py",
+    "README.md",
+    "LICENSE",
+    "install.ps1",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

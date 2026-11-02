@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-sync-ui
+      name: 'dsh-sync-ui'
